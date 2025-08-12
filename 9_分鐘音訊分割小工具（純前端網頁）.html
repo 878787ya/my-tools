@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>音訊分割小工具｜每 9 分鐘一段</title>
+  <style>
+    :root{--bg:#0b1020;--card:#111831;--muted:#8ea0c9;--text:#e7ecff;--accent:#6ea8ff;--accent2:#b388ff;--ok:#57d69a;--warn:#ffd15c}
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#0b1020,#091235 40%,#101b3f);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial}
+    .wrap{max-width:960px;margin:40px auto;padding:0 20px}
+    .card{background:radial-gradient(1200px 400px at -10% -40%,rgba(110,168,255,.08),transparent 70%),radial-gradient(900px 300px at 120% -30%,rgba(179,136,255,.09),transparent 70%),var(--card);border:1px solid rgba(255,255,255,.08);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.35);padding:22px}
+    h1{font-size:24px;margin:0 0 8px}p.sub{margin:0 0 18px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:860px){.grid{grid-template-columns: 1.3fr .7fr}}
+    label{display:block;font-size:14px;color:var(--muted);margin-bottom:8px}
+    .drop{border:2px dashed rgba(255,255,255,.2);border-radius:16px;padding:24px;text-align:center;transition:.2s;cursor:pointer}
+    .drop:hover{border-color:var(--accent)}
+    .hint{font-size:12px;color:var(--muted)}
+    .row{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
+    .field{flex:1;min-width:180px}
+    input[type="text"], input[type="number"], input[type="file"], select{
+      width:100%;background:#0e1530;border:1px solid rgba(255,255,255,.12);color:var(--text);padding:10px 12px;border-radius:12px;outline:none
+    }
+    input[type="number"]{appearance:textfield}
+    .btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#081026;border:none;border-radius:12px;padding:12px 16px;font-weight:700;cursor:pointer}
+    .btn[disabled]{opacity:.5;cursor:not-allowed}
+    .btn-secondary{background:#0e1530;border:1px solid rgba(255,255,255,.15);color:var(--text)}
+    .progress{height:8px;background:#0d1530;border-radius:999px;overflow:hidden}
+    .bar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--ok));transition:width .2s}
+    .list{margin-top:14px;display:grid;gap:10px}
+    .item{display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px}
+    .item small{color:var(--muted)}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;font-size:12px;background:rgba(110,168,255,.15)}
+    .footer{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    details{margin-top:16px}
+    details .log{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;white-space:pre-wrap}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>音訊分割小工具（每 9 分鐘一段）</h1>
+      <p class="sub">純前端、免上傳伺服器。將你的錄音檔分割為固定時長的小檔案，預設每段 <b>9 分鐘</b>。可輸出 <span class="badge">WAV</span> 或 <span class="badge">MP3</span>。</p>
+      <div class="grid">
+        <section>
+          <label>選擇或拖放音訊檔（建議 mp3 / wav / m4a / aac）</label>
+          <div id="drop" class="drop">
+            <input id="file" type="file" accept="audio/*" style="display:none" />
+            <div>拖放到這裡，或 <u>點此選擇檔案</u></div>
+            <div class="hint" id="fileHint">尚未選擇檔案</div>
+          </div>
+
+          <div class="row" style="margin-top:16px">
+            <div class="field">
+              <label>每段長度（分鐘）</label>
+              <input id="minutes" type="number" min="1" step="1" value="9" />
+            </div>
+            <div class="field">
+              <label>檔名開頭</label>
+              <input id="basename" type="text" value="segment" />
+            </div>
+            <div class="field">
+              <label>輸出格式</label>
+              <select id="format">
+                <option value="mp3" selected>MP3（有損，檔案較小）</option>
+                <option value="wav">WAV（無壓縮，無失真）</option>
+              </select>
+            </div>
+            <div class="field" id="bitrateWrap">
+              <label>MP3 比特率 (kbps)</label>
+              <select id="bitrate">
+                <option>96</option>
+                <option selected>128</option>
+                <option>192</option>
+                <option>256</option>
+                <option>320</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>開始處理</label>
+              <button id="start" class="btn" disabled>分割音訊</button>
+            </div>
+          </div>
+
+          <div style="margin-top:16px">
+            <div class="progress"><div class="bar" id="bar"></div></div>
+            <div class="hint" id="status">等待檔案…</div>
+          </div>
+
+          <div class="footer">
+            <button id="zipAll" class="btn-secondary" disabled>全部打包 ZIP 下載</button>
+            <button id="runTests" class="btn-secondary">執行內建測試</button>
+            <span class="hint">所有處理均在你的瀏覽器本機完成，你可以直接下載。</span>
+          </div>
+
+          <div class="list" id="outputs"></div>
+          <details>
+            <summary>開發者測試輸出</summary>
+            <div id="tests" class="log"></div>
+          </details>
+        </section>
+
+        <aside>
+          <div class="card">
+            <h2 style="font-size:18px;margin:0 0 8px">說明</h2>
+            <ul style="margin:0 0 10px 18px;line-height:1.6">
+              <li>本工具使用瀏覽器的 <span class="mono">Web Audio API</span> 解碼音訊；輸出格式可選 <b>MP3</b>（使用 LAME 編碼）或 <b>WAV</b>。</li>
+              <li>優點：完全離線、無需安裝軟體、保留隱私。</li>
+              <li>提示：MP3 需要載入 <span class="mono">lamejs</span>；若無法載入，將自動隱藏 MP3 選項。</li>
+            </ul>
+            <h3 style="font-size:16px;margin:14px 0 6px">小提示</h3>
+            <ul style="margin:0 0 0 18px;line-height:1.6">
+              <li>若分段很多，建議使用「打包 ZIP」一次下載。</li>
+              <li>iOS Safari 會將下載檔案存入「檔案」App；Android/桌機則會在預設下載資料夾。</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- 依賴：JSZip 與 LAME（MP3）-->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+
+  <!-- 將所有 JS 包在 IIFE + 模組作用域，避免重複宣告衝突 -->
+  <script type="module">
+  (() => {
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+    const els = {
+      fileInput: $('file'),
+      drop: $('drop'),
+      fileHint: $('fileHint'),
+      startBtn: $('start'),
+      bar: $('bar'),
+      status: $('status'),
+      outputs: $('outputs'),
+      minutes: $('minutes'),
+      baseName: $('basename'),
+      format: $('format'),
+      bitrate: $('bitrate'),
+      bitrateWrap: $('bitrateWrap'),
+      zipBtn: $('zipAll'),
+      runTests: $('runTests'),
+      tests: $('tests'),
+    };
+
+    // 若 lamejs 未載入，移除 MP3 選項
+    function ensureMp3Availability(){
+      const hasLame = typeof window.lamejs !== 'undefined';
+      if(!hasLame){
+        // 隱藏 MP3 UI，切到 WAV
+        els.format.value = 'wav';
+        els.bitrateWrap.style.display = 'none';
+        [...els.format.options].forEach(opt=>{ if(opt.value==='mp3') opt.disabled = true; });
+        els.status.textContent = '提示：未載入 MP3 編碼器，已切換為 WAV 輸出。';
+      }
+      toggleBitrate();
+      return hasLame;
+    }
+
+    function toggleBitrate(){
+      els.bitrateWrap.style.display = els.format.value === 'mp3' ? '' : 'none';
+    }
+
+    toggleBitrate();
+    els.format.addEventListener('change', toggleBitrate);
+
+    let loadedFile = null;
+    let generated = [];
+
+    // Drag & drop / 選檔
+    els.drop.addEventListener('click', () => els.fileInput.click());
+    els.drop.addEventListener('dragover', (e) => { e.preventDefault(); els.drop.style.borderColor = 'var(--accent)'; });
+    els.drop.addEventListener('dragleave', () => { els.drop.style.borderColor = 'rgba(255,255,255,.2)'; });
+    els.drop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      els.drop.style.borderColor = 'rgba(255,255,255,.2)';
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+    });
+    els.fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) setFile(e.target.files[0]);
+    });
+
+    function setFile(file){
+      loadedFile = file;
+      els.fileHint.textContent = `${file.name}（${(file.size/1024/1024).toFixed(2)} MB）`;
+      els.startBtn.disabled = false;
+      els.status.textContent = '檔案已就緒，點下「分割音訊」開始。';
+      els.outputs.innerHTML = '';
+      generated = [];
+      els.zipBtn.disabled = true;
+      setProgress(0);
+    }
+
+    function setProgress(val){
+      els.bar.style.width = `${Math.max(0, Math.min(100, val))}%`;
+    }
+
+    els.startBtn.addEventListener('click', async () => {
+      if(!loadedFile) return;
+      const mp3Ok = ensureMp3Availability();
+      if(els.format.value==='mp3' && !mp3Ok){
+        alert('無法輸出 MP3（編碼器未載入）。請改選 WAV 或檢查網路連線。');
+        return;
+      }
+
+      toggleUI(true);
+      setProgress(2);
+      els.status.textContent = '解碼音訊中…（依檔案大小而定）';
+
+      try{
+        const arrayBuf = await loadedFile.arrayBuffer();
+        const buffer = await decodeAudioDataAsync(arrayBuf);
+
+        const sampleRate = buffer.sampleRate;
+        const channels = buffer.numberOfChannels;
+        const totalSamples = buffer.length;
+        const chunkMinutes = Math.max(1, parseInt(els.minutes.value, 10) || 9);
+        const chunkSamples = Math.floor(chunkMinutes * 60 * sampleRate);
+        const numChunks = Math.ceil(totalSamples / chunkSamples);
+
+        els.status.textContent = `分割中… 共 ${numChunks} 段`;
+
+        generated = [];
+        els.outputs.innerHTML = '';
+
+        for(let i=0;i<numChunks;i++){
+          const start = i * chunkSamples;
+          const end = Math.min((i+1)*chunkSamples, totalSamples);
+          const sliceLen = end - start;
+
+          const outBuffer = createAudioBuffer(sliceLen, channels, sampleRate);
+          for(let ch=0; ch<channels; ch++){
+            const data = buffer.getChannelData(ch).subarray(start, end);
+            outBuffer.copyToChannel(data, ch, 0);
+          }
+
+          let blob, ext, sizeNote = '';
+          if(els.format.value === 'mp3'){
+            const kbps = parseInt(els.bitrate.value || '128', 10);
+            blob = audioBufferToMp3Blob(outBuffer, kbps);
+            ext = 'mp3';
+            sizeNote = `（${kbps}kbps）`;
+          }else{
+            blob = audioBufferToWavBlob(outBuffer);
+            ext = 'wav';
+          }
+
+          const fileName = `${(els.baseName.value || 'segment')}_${String(i+1).padStart(3,'0')}.${ext}`;
+          generated.push({name:fileName, blob});
+
+          const url = URL.createObjectURL(blob);
+          const el = document.createElement('div');
+          el.className = 'item';
+          const durationSec = sliceLen / sampleRate;
+          el.innerHTML = `<div><strong>${fileName}</strong><br><small>${formatTime(durationSec)}、${(blob.size/1024/1024).toFixed(2)} MB ${sizeNote}</small></div>`;
+          const a = document.createElement('a');
+          a.textContent = '下載';
+          a.className = 'btn btn-secondary';
+          a.href = url;
+          a.download = fileName;
+          a.addEventListener('click', () => setTimeout(() => URL.revokeObjectURL(url), 5000));
+          el.appendChild(a);
+          els.outputs.appendChild(el);
+
+          setProgress( ((i+1)/numChunks)*100 );
+        }
+
+        els.status.textContent = '完成！你可以逐一下載或打包成 ZIP。';
+        els.zipBtn.disabled = false;
+      }catch(err){
+        console.error(err);
+        els.status.textContent = '解碼或分割時發生錯誤，請改用 mp3/wav 再試一次。';
+      }finally{
+        toggleUI(false);
+      }
+    });
+
+    els.zipBtn.addEventListener('click', async () => {
+      if(!generated.length) return;
+      els.zipBtn.disabled = true;
+      els.status.textContent = '建立 ZIP 中…';
+      try{
+        const zip = new JSZip();
+        generated.forEach(({name, blob}) => zip.file(name, blob));
+        const content = await zip.generateAsync({type:'blob'});
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url; a.download = (els.baseName.value || 'segments') + '.zip';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        els.status.textContent = 'ZIP 已建立並下載。';
+      }catch(e){
+        console.error(e);
+        els.status.textContent = 'ZIP 建立失敗。';
+      }finally{
+        els.zipBtn.disabled = false;
+      }
+    });
+
+    // 內建測試：以合成音頻驗證切割/編碼與輸出長度
+    els.runTests.addEventListener('click', async () => {
+      const log = [];
+      function push(msg){ log.push(msg); els.tests.textContent = log.join('\n'); }
+      log.length = 0; els.tests.textContent = '';
+      push('開始測試…');
+
+      const sr = 44100;
+      // 測試 1：19 分鐘、雙聲道 440Hz，切 9 分鐘 -> 3 段 (9,9,1)
+      const buf1 = synthToneBuffer(sr, 19*60, 2, 440);
+      const chunks1 = splitBufferIntoChunks(buf1, 9);
+      push(`測試1：期望 3 段，實得 ${chunks1.length} 段 | 各段長度(秒)：` + chunks1.map(b=>Math.round(b.length/b.sampleRate)).join(', '));
+
+      // 測試 2：8 分鐘、單聲道 1kHz，切 9 分鐘 -> 1 段 (8)
+      const buf2 = synthToneBuffer(sr, 8*60, 1, 1000);
+      const chunks2 = splitBufferIntoChunks(buf2, 9);
+      push(`測試2：期望 1 段(8分)，實得 ${chunks2.length} 段`);
+
+      // 測試 3：剛好 9 分鐘、雙聲道
+      const buf3 = synthToneBuffer(sr, 9*60, 2, 220);
+      const chunks3 = splitBufferIntoChunks(buf3, 9);
+      push(`測試3：期望 1 段(9分整)，實得 ${chunks3.length} 段`);
+
+      // 驗證 WAV 檔頭大小/資料長度是否正確
+      const wav = audioBufferToWavBlob(chunks3[0]);
+      push(`測試4：WAV Blob 大小 ≈ 44 + samples*channels*2 -> ${Math.round(wav.size/1024)} KB`);
+
+      // 若可用 MP3，驗證 MP3 編碼與體積顯著縮小
+      if (typeof window.lamejs !== 'undefined'){
+        const mp3 = audioBufferToMp3Blob(chunks3[0], 128);
+        push(`測試5：MP3 Blob 大小（128kbps） -> ${Math.round(mp3.size/1024)} KB`);
+        push(`        對比 WAV：${Math.round(wav.size/mp3.size)}x 體積差（越大越省）`);
+      } else {
+        push('測試5：略過 MP3（lamejs 未載入）');
+      }
+
+      push('測試完成。');
+    });
+
+    function toggleUI(busy){
+      els.startBtn.disabled = busy;
+      els.minutes.disabled = busy;
+      els.baseName.disabled = busy;
+      els.format.disabled = busy;
+      els.bitrate.disabled = busy;
+    }
+
+    // --- 工具函式們 ---
+    function formatTime(sec){
+      const s = Math.floor(sec%60).toString().padStart(2,'0');
+      const m = Math.floor((sec/60)%60).toString().padStart(2,'0');
+      const h = Math.floor(sec/3600).toString();
+      return (h>0? h+':':'') + m + ':' + s;
+    }
+
+    function createAudioBuffer(length, channels, sampleRate){
+      if (typeof AudioBuffer === 'function'){
+        return new AudioBuffer({length, numberOfChannels: channels, sampleRate});
+      }
+      const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(channels, length, sampleRate);
+      return ctx.createBuffer(channels, length, sampleRate);
+    }
+
+    function splitBufferIntoChunks(buffer, chunkMinutes){
+      const sampleRate = buffer.sampleRate;
+      const total = buffer.length;
+      const chunkSamples = Math.floor(Math.max(1, chunkMinutes) * 60 * sampleRate);
+      const num = Math.ceil(total / chunkSamples);
+      const out = [];
+      for(let i=0;i<num;i++){
+        const start = i * chunkSamples;
+        const end = Math.min((i+1)*chunkSamples, total);
+        const len = end - start;
+        const b = createAudioBuffer(len, buffer.numberOfChannels, sampleRate);
+        for(let ch=0; ch<buffer.numberOfChannels; ch++){
+          const data = buffer.getChannelData(ch).subarray(start, end);
+          b.copyToChannel(data, ch, 0);
+        }
+        out.push(b);
+      }
+      return out;
+    }
+
+    // decodeAudioData：相容舊 Safari（callback 版本）
+    async function decodeAudioDataAsync(arrayBuf){
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      try{
+        if (ctx.decodeAudioData.length === 1){
+          const buffer = await ctx.decodeAudioData(arrayBuf);
+          ctx.close();
+          return buffer;
+        }
+        const buffer = await new Promise((resolve, reject) => {
+          ctx.decodeAudioData(arrayBuf, resolve, reject);
+        });
+        ctx.close();
+        return buffer;
+      }catch(e){
+        ctx.close();
+        throw e;
+      }
+    }
+
+    // 將 AudioBuffer 轉為 WAV Blob（16-bit PCM，交錯寫入）
+    function audioBufferToWavBlob(buffer){
+      const numOfChan = buffer.numberOfChannels;
+      const sampleRate = buffer.sampleRate;
+      const numSamples = buffer.length;
+      const bytesPerSample = 2; // 16-bit
+      const blockAlign = numOfChan * bytesPerSample;
+      const byteRate = sampleRate * blockAlign;
+      const dataSize = numSamples * blockAlign;
+
+      const ab = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(ab);
+
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + dataSize, true);
+      writeString(view, 8, 'WAVE');
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, numOfChan, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, 16, true);
+      writeString(view, 36, 'data');
+      view.setUint32(40, dataSize, true);
+
+      const channelData = [];
+      for(let ch=0; ch<numOfChan; ch++){
+        const arr = new Float32Array(numSamples);
+        buffer.copyFromChannel(arr, ch, 0);
+        channelData.push(arr);
+      }
+      let offset = 44;
+      for(let i=0;i<numSamples;i++){
+        for(let ch=0; ch<numOfChan; ch++){
+          let s = Math.max(-1, Math.min(1, channelData[ch][i]));
+          view.setInt16(offset, s<0 ? s*0x8000 : s*0x7FFF, true);
+          offset += 2;
+        }
+      }
+
+      return new Blob([view], {type:'audio/wav'});
+
+      function writeString(dataview, offset, str){
+        for(let i=0;i<str.length;i++) dataview.setUint8(offset+i, str.charCodeAt(i));
+      }
+    }
+
+    // 將 AudioBuffer 轉為 MP3 Blob（使用 lamejs）
+    function audioBufferToMp3Blob(buffer, kbps){
+      if (typeof window.lamejs === 'undefined') throw new Error('lamejs 未載入');
+      const channels = buffer.numberOfChannels;
+      const sampleRate = buffer.sampleRate;
+      const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
+
+      // 轉為 Int16 PCM
+      const chData = [];
+      for(let ch=0; ch<channels; ch++){
+        const f32 = new Float32Array(buffer.length);
+        buffer.copyFromChannel(f32, ch, 0);
+        const i16 = new Int16Array(f32.length);
+        for(let i=0;i<f32.length;i++){
+          let s = Math.max(-1, Math.min(1, f32[i]));
+          i16[i] = s < 0 ? (s * 0x8000) : (s * 0x7FFF);
+        }
+        chData.push(i16);
+      }
+
+      const blockSize = 1152; // LAME 推薦 frame 大小
+      const mp3Data = [];
+      for(let i=0; i<chData[0].length; i += blockSize){
+        const left = chData[0].subarray(i, i+blockSize);
+        let mp3buf;
+        if(channels === 2){
+          const right = chData[1].subarray(i, i+blockSize);
+          mp3buf = mp3encoder.encodeBuffer(left, right);
+        } else {
+          mp3buf = mp3encoder.encodeBuffer(left);
+        }
+        if (mp3buf.length > 0) mp3Data.push(mp3buf);
+      }
+      const end = mp3encoder.flush();
+      if (end.length > 0) mp3Data.push(end);
+      return new Blob(mp3Data, {type: 'audio/mpeg'});
+    }
+
+    // 產生合成測試音（正弦波）
+    function synthToneBuffer(sampleRate, durationSec, channels, freq){
+      const len = Math.floor(sampleRate * durationSec);
+      const buf = createAudioBuffer(len, channels, sampleRate);
+      for(let ch=0; ch<channels; ch++){
+        const data = buf.getChannelData(ch);
+        for(let i=0;i<len;i++){
+          data[i] = Math.sin(2*Math.PI*freq*(i/sampleRate));
+        }
+      }
+      return buf;
+    }
+
+  })();
+  </script>
+</body>
+</html>
